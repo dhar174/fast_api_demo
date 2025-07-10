@@ -23,12 +23,13 @@ app = FastAPI(title="Minimal FastAPI Image Classifier")
 
 # ---------- 1. Load model & labels ----------
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+print(f"Using device: {device}")
+# Load a pretrained ResNet-18 model
 model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
 model.eval().to(device)
 
 # Download ImageNet labels (only once)
-LABELS_PATH = "imagenet_class_index.json"
+LABELS_PATH = "imagenet_classes.txt"
 if not os.path.exists(LABELS_PATH):
     urllib.request.urlretrieve(
         "https://raw.githubusercontent.com/pytorch/hub/master/imagenet_classes.txt",
