@@ -20,6 +20,9 @@ import json
 import urllib.request
 import os
 import logging
+from typing import List, Dict, Any, Optional
+from datetime import datetime
+import uuid
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -80,6 +83,67 @@ if chat_bot is not None:
         print(f"Error during chat model initialization: {e}")
 
 print("Chat initialization complete")
+
+# ---------- Conversation History Management ----------
+# In-memory storage for conversation histories
+# In production, you'd want to use a database like Redis or PostgreSQL
+conversation_histories: Dict[str, List[Dict[str, Any]]] = {}
+
+def get_or_create_conversation_history(session_id: str) -> List[Dict[str, Any]]:
+    """Get existing conversation history or create a new one."""
+    if session_id not in conversation_histories:
+        conversation_histories[session_id] = []
+    return conversation_histories[session_id]
+
+def add_to_conversation_history(session_id: str, role: str, content: List[Dict[str, Any]]) -> None:
+    """Add a message to the conversation history."""
+    history = get_or_create_conversation_history(session_id)
+    history.append({
+        "role": role,
+        "content": content,
+        "timestamp": datetime.now().isoformat()
+    })
+    
+    # Limit history to last 10 exchanges (20 messages) to prevent memory issues
+    if len(history) > 20:
+        history[:] = history[-20:]
+
+def clean_conversation_history(session_id: str) -> List[Dict[str, Any]]:
+    """Clean conversation history to ensure only one image is kept."""
+    history = get_or_create_conversation_history(session_id)
+    
+    # Find the most recent message with an image
+    last_image_index = -1
+    for i in range(len(history) - 1, -1, -1):
+        if history[i]["role"] == "user":
+            for content_item in history[i]["content"]:
+                if content_item.get("type") == "image":
+                    last_image_index = i
+                    break
+        if last_image_index != -1:
+            break
+    
+    # Remove images from all messages except the most recent one
+    cleaned_history = []
+    for i, message in enumerate(history):
+        cleaned_message = {
+            "role": message["role"],
+            "content": []
+        }
+        
+        for content_item in message["content"]:
+            if content_item.get("type") == "image":
+                # Only keep the image if this is the most recent message with an image
+                if i == last_image_index:
+                    cleaned_message["content"].append(content_item)
+            else:
+                cleaned_message["content"].append(content_item)
+        
+        # Only add the message if it has content
+        if cleaned_message["content"]:
+            cleaned_history.append(cleaned_message)
+    
+    return cleaned_history
 
 # Download ImageNet labels (only once)
 LABELS_PATH = "imagenet_classes.txt"
@@ -163,116 +227,153 @@ async def sentiment_analysis(text: str):
 
 
 @app.post("/chat")
-async def chat(message: str = Form(...), image: UploadFile = None):
+async def chat(message: str = Form(...), image: UploadFile = None, session_id: str = Form(None)):
     """Chat endpoint that provides conversational AI with image understanding.
-    Uses SmolVLM pipeline for multimodal conversations.
+    Uses SmolVLM pipeline for multimodal conversations with conversation history.
     """
+    # Generate session ID if not provided
+    if not session_id:
+        session_id = str(uuid.uuid4())
+    
     try:
-        # Handle image upload and text message
+        # Prepare the current user message content
+        current_content = []
+        pil_image = None
+        
+        # Handle image upload
         if image:
             if image.content_type not in ("image/jpeg", "image/png"):
                 raise HTTPException(
                     status_code=415, detail="Please upload a JPEG or PNG image."
                 )
             
-            # Process with image context
-            if chat_bot is not None:
-                # Convert image to PIL
-                img_bytes = await image.read()
-                pil_image = Image.open(io.BytesIO(img_bytes)).convert("RGB")
-                
-                # Format messages for SmolVLM pipeline
-                messages = [
-                    {
-                        "role": "user", 
-                        "content": [
-                            {"type": "image"},
-                            {"type": "text", "text": message}
-                        ]
-                    }
-                ]
-                
-                # Generate response using pipeline with proper parameters
-                response = chat_bot(
-                    text=messages, 
-                    images=[pil_image], 
-                    max_new_tokens=256, 
-                    return_full_text=False
-                )
-                
-                # Extract assistant response
-                if isinstance(response, list) and len(response) > 0:
-                    assistant_response = response[0].get('generated_text', '').strip()
-                elif isinstance(response, str):
-                    assistant_response = response.strip()
-                else:
-                    assistant_response = "I can see your image! How can I help you with it?"
-                
-                if not assistant_response:
-                    assistant_response = "I can see your image! How can I help you with it?"
-                    
-            else:
-                assistant_response = "I can see you sent an image! While I can't analyze it yet, I'm here to help with your message."
+            # Convert image to PIL
+            img_bytes = await image.read()
+            pil_image = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+            current_content.append({"type": "image"})
         
-        else:
-            # Text-only conversation
-            if chat_bot is not None:
-                # Format messages for SmolVLM pipeline (text-only)
-                messages = [
-                    {
-                        "role": "user", 
-                        "content": [
-                            {"type": "text", "text": message}
-                        ]
-                    }
-                ]
-                
-                # Generate response using pipeline with proper parameters
+        # Add text message
+        current_content.append({"type": "text", "text": message})
+        
+        # Add current user message to history
+        add_to_conversation_history(session_id, "user", current_content)
+        
+        # Get cleaned conversation history (with only one image)
+        conversation_history = clean_conversation_history(session_id)
+        
+        # Process with chat model
+        if chat_bot is not None:
+            # Prepare messages for the pipeline
+            messages = conversation_history.copy()
+            
+            # Collect images from the conversation history
+            images = []
+            for msg in messages:
+                if msg["role"] == "user":
+                    for content_item in msg["content"]:
+                        if content_item.get("type") == "image":
+                            if pil_image is not None:
+                                images.append(pil_image)
+                            break
+            
+            # Generate response using pipeline with proper parameters
+            if images:
+                response = chat_bot(
+                    text=messages, 
+                    images=images, 
+                    max_new_tokens=256, 
+                    return_full_text=False
+                )
+            else:
                 response = chat_bot(
                     text=messages, 
                     max_new_tokens=256, 
                     return_full_text=False
                 )
-                
-                # Extract assistant response
-                if isinstance(response, list) and len(response) > 0:
-                    assistant_response = response[0].get('generated_text', '').strip()
-                elif isinstance(response, str):
-                    assistant_response = response.strip()
+            
+            # Extract assistant response
+            if isinstance(response, list) and len(response) > 0:
+                assistant_response = response[0].get('generated_text', '').strip()
+            elif isinstance(response, str):
+                assistant_response = response.strip()
+            else:
+                assistant_response = "I'm here to help! Could you please rephrase your question?"
+            
+            if not assistant_response:
+                if images:
+                    assistant_response = "I can see your image! How can I help you with it?"
                 else:
                     assistant_response = "I'm here to help! Could you please rephrase your question?"
-                
-                if not assistant_response:
-                    assistant_response = "I'm here to help! Could you please rephrase your question?"
-                    
+        else:
+            # Simple rule-based fallback
+            if image:
+                assistant_response = "I can see you sent an image! While I can't analyze it yet, I'm here to help with your message."
             else:
-                # Simple rule-based fallback
                 assistant_response = f"I understand you said: '{message}'. I'm a simple AI assistant here to help!"
         
         # Clean up and validate response
         if not assistant_response or len(assistant_response.strip()) == 0:
             assistant_response = "I'm here to help! Could you please rephrase your question?"
-            
+        
+        # Add assistant response to history
+        add_to_conversation_history(session_id, "assistant", [{"type": "text", "text": assistant_response}])
+        
         # Log the interaction
         model_name = "SmolVLM-Instruct" if chat_bot is not None else "Simple Rule-based Chat"
-        logger.info(f"User: {message} | Assistant: {assistant_response} | Model: {model_name}")
+        logger.info(f"Session {session_id[:8]}... | User: {message} | Assistant: {assistant_response} | Model: {model_name}")
         
         return JSONResponse({
             "message": message,
             "response": assistant_response,
             "has_image": image is not None,
-            "model_used": model_name
+            "model_used": model_name,
+            "session_id": session_id,
+            "conversation_length": len(conversation_histories.get(session_id, []))
         })
         
     except Exception as e:
-        logger.error(f"Chat error: {str(e)} | Message: {message} | Image: {image.filename if image else 'None'}")
+        logger.error(f"Chat error: {str(e)} | Message: {message} | Image: {image.filename if image else 'None'} | Session: {session_id}")
         # Provide a fallback response even if there's an error
         return JSONResponse({
             "message": message,
             "response": "I'm sorry, I'm having trouble processing your request right now. Please try again.",
             "has_image": image is not None,
-            "model_used": "Error fallback"
+            "model_used": "Error fallback",
+            "session_id": session_id,
+            "conversation_length": len(conversation_histories.get(session_id, []))
         })
+
+
+@app.get("/chat/history/{session_id}")
+async def get_conversation_history(session_id: str):
+    """Get the conversation history for a specific session."""
+    history = conversation_histories.get(session_id, [])
+    return JSONResponse({
+        "session_id": session_id,
+        "history": history,
+        "length": len(history)
+    })
+
+@app.delete("/chat/history/{session_id}")
+async def clear_conversation_history(session_id: str):
+    """Clear the conversation history for a specific session."""
+    if session_id in conversation_histories:
+        del conversation_histories[session_id]
+        return JSONResponse({"message": f"Conversation history cleared for session {session_id}"})
+    else:
+        return JSONResponse({"message": f"No conversation history found for session {session_id}"})
+
+@app.get("/chat/sessions")
+async def list_active_sessions():
+    """List all active conversation sessions."""
+    sessions = []
+    for session_id, history in conversation_histories.items():
+        sessions.append({
+            "session_id": session_id,
+            "message_count": len(history),
+            "last_updated": history[-1]["timestamp"] if history else None
+        })
+    return JSONResponse({"active_sessions": sessions, "total_sessions": len(sessions)})
 
 
 # ---------- 4. Entry point ----------

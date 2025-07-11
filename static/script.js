@@ -25,11 +25,86 @@ const removeChatImage = document.getElementById('removeChatImage');
 
 // Chat state
 let chatImageFile = null;
+let currentSessionId = null;
+
+// Generate a new session ID
+function generateSessionId() {
+    return 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+}
+
+// Initialize new chat session
+function initNewSession() {
+    currentSessionId = generateSessionId();
+    document.getElementById('sessionId').textContent = currentSessionId.substring(0, 20) + '...';
+    
+    // Clear chat messages except welcome message
+    const chatMessages = document.getElementById('chatMessages');
+    chatMessages.innerHTML = `
+        <div class="welcome-message">
+            <i class="fas fa-robot"></i>
+            <p>Hello! I'm SmolVLM, your AI assistant. You can ask me questions about text or images!</p>
+            <small>New session started: ${currentSessionId}</small>
+        </div>
+    `;
+}
+
+// Clear conversation history
+async function clearConversationHistory() {
+    if (!currentSessionId) return;
+    
+    try {
+        const response = await fetch(`/chat/history/${currentSessionId}`, {
+            method: 'DELETE'
+        });
+        
+        if (response.ok) {
+            showNotification('Conversation history cleared', 'success');
+            initNewSession();
+        } else {
+            throw new Error('Failed to clear history');
+        }
+    } catch (error) {
+        console.error('Error clearing history:', error);
+        showNotification('Failed to clear history', 'error');
+    }
+}
+
+// Show notification
+function showNotification(message, type = 'info') {
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.textContent = message;
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 12px 20px;
+        border-radius: 5px;
+        color: white;
+        font-weight: bold;
+        z-index: 1000;
+        opacity: 0;
+        transition: opacity 0.3s;
+    `;
+    
+    if (type === 'success') notification.style.backgroundColor = '#4CAF50';
+    else if (type === 'error') notification.style.backgroundColor = '#f44336';
+    else notification.style.backgroundColor = '#2196F3';
+    
+    document.body.appendChild(notification);
+    
+    setTimeout(() => notification.style.opacity = '1', 10);
+    setTimeout(() => {
+        notification.style.opacity = '0';
+        setTimeout(() => document.body.removeChild(notification), 300);
+    }, 3000);
+}
 
 // Initialize app
 document.addEventListener('DOMContentLoaded', function() {
     checkServerStatus();
     setupEventListeners();
+    initNewSession(); // Initialize first session
 });
 
 // Check server status
@@ -85,6 +160,18 @@ function setupEventListeners() {
     chatImageBtn.addEventListener('click', () => chatImageInput.click());
     chatImageInput.addEventListener('change', handleChatImageSelect);
     removeChatImage.addEventListener('click', removeChatImagePreview);
+    
+    // Session management buttons
+    const newSessionBtn = document.getElementById('newSessionBtn');
+    const clearHistoryBtn = document.getElementById('clearHistoryBtn');
+    
+    if (newSessionBtn) {
+        newSessionBtn.addEventListener('click', initNewSession);
+    }
+    
+    if (clearHistoryBtn) {
+        clearHistoryBtn.addEventListener('click', clearConversationHistory);
+    }
 }
 
 // Drag and drop handlers
@@ -427,6 +514,11 @@ async function sendChatMessage() {
         return;
     }
     
+    // Initialize session if not exists
+    if (!currentSessionId) {
+        initNewSession();
+    }
+    
     // Add user message to chat
     const userImageUrl = chatImageFile ? URL.createObjectURL(chatImageFile) : null;
     addChatMessage(message || '(Image)', true, userImageUrl);
@@ -441,6 +533,7 @@ async function sendChatMessage() {
         // Prepare form data
         const formData = new FormData();
         formData.append('message', message);
+        formData.append('session_id', currentSessionId);
         if (chatImageFile) {
             formData.append('image', chatImageFile);
         }
@@ -462,6 +555,12 @@ async function sendChatMessage() {
         
         // Add assistant response
         addChatMessage(result.response, false);
+        
+        // Update session info
+        document.getElementById('sessionId').textContent = result.session_id.substring(0, 20) + '...';
+        
+        // Show conversation length in a subtle way
+        console.log(`Conversation length: ${result.conversation_length} messages`);
         
     } catch (error) {
         console.error('Chat error:', error);
