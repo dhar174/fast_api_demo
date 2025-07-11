@@ -33,6 +33,9 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # ---------- 1. Load model & labels ----------
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+assert device is not "cpu", "No CUDA device found, using CPU instead."
+
 print(f"Using device: {device}")
 # Load a pretrained ResNet-18 model
 model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
@@ -43,7 +46,12 @@ sentiment_analyzer = pipeline(
 )
 
 
-chat_bot = pipeline("text-generation", device=0 if torch.cuda.is_available() else -1)
+chat_bot = pipeline(
+    "text-generation",
+    model="HuggingFaceTB/SmolVLM-Instruct",
+    device=0 if torch.cuda.is_available() else -1,
+    torch_dtype=torch.float16,
+)
 
 # Download ImageNet labels (only once)
 LABELS_PATH = "imagenet_classes.txt"
@@ -124,6 +132,46 @@ async def sentiment_analysis(text: str):
     """
     result = sentiment_analyzer(text)
     return JSONResponse({"text": text, "sentiment": result[0]})
+
+
+async def messages_builder(message: str, image: UploadFile = None):
+    messages = [{"role": "user", "content": [{"type": "text", "text": message}]}]
+    if image:
+        if image.content_type not in ("image/jpeg", "image/png"):
+            raise HTTPException(
+                status_code=415, detail="Please upload a JPEG or PNG image."
+            )
+
+        # 3-B. Read image bytes -> PIL Image
+        img_bytes = await image.read()
+        rgb_image = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+
+        messages[0]["content"].append({"type": "image", "data": rgb_image})
+    return messages
+
+
+@app.post("/chat")
+async def chat(message: str, image: UploadFile = None):
+    """Example chat endpoint that uses the chat_bot pipeline.
+    If an image is provided, it can be processed as well.
+    """
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "image",
+                    "url": "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/p-blog/candy.JPG",
+                },
+                {"type": "text", "text": "What animal is on the candy?"},
+            ],
+        },
+    ]
+    response = chat_bot(messages)
+
+    print(f"Chat response: {response[0]}")
+    # Assuming response is a list with a dictionary containing 'generated_text'
+    return JSONResponse({"message": message, "response": response[0]})
 
 
 # ---------- 4. Entry point ----------
