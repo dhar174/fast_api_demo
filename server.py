@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 # We are using transformers for future extensions, e.g., sentiment analysis
 from transformers import (
     pipeline,
-)  # Uncomment if you want to use transformers for NLP tasks
+)  # Using pipeline for image-text-to-text tasks
 
 
 app = FastAPI(title="Minimal FastAPI Image Classifier")
@@ -50,23 +50,35 @@ sentiment_analyzer = pipeline(
 
 # Initialize chat capabilities
 print("Initializing chat models...")
+
+# Initialize chat model using transformers pipeline
 chat_bot = None
 
-# Try to load a simple text generation model
 try:
-    # Use a smaller, more reliable model
+    # Use image-text-to-text pipeline for SmolVLM
     chat_bot = pipeline(
         "image-text-to-text",
         model="HuggingFaceTB/SmolVLM-Instruct",
         device=0 if torch.cuda.is_available() else -1,
-        torch_dtype=torch.float16,  # More compatible
+        torch_dtype=torch.float16,
     )
-    print(f"✓ {chat_bot.model.base_model._get_name()} loaded successfully for chat. Running on {device}.")
+    print(f"✓ SmolVLM-Instruct loaded successfully for chat using pipeline. Running on {device}.")
 except Exception as e:
-    print(f"✗ Warning: Could not load {chat_bot.model.base_model._get_name()}: {e}")
+    print(f"✗ Warning: Could not load SmolVLM-Instruct: {e}")
     chat_bot = None
 
-# For now, let's skip the complex multimodal model to ensure basic functionality works
+# Ensure the chat model is ready
+if chat_bot is not None:
+    try:
+        # Test the chat model with a simple prompt
+        test_messages = [
+            {"role": "user", "content": [{"type": "text", "text": "Hello, how are you?"}]}
+        ]
+        test_response = chat_bot(text=test_messages, max_new_tokens=50, return_full_text=False)
+        print(f"Chat model initialized successfully: {test_response}")
+    except Exception as e:
+        print(f"Error during chat model initialization: {e}")
+
 print("Chat initialization complete")
 
 # Download ImageNet labels (only once)
@@ -152,56 +164,87 @@ async def sentiment_analysis(text: str):
 
 @app.post("/chat")
 async def chat(message: str = Form(...), image: UploadFile = None):
-    """Chat endpoint that provides simple conversational AI.
-    Currently supports text-only conversations with image acknowledgment.
+    """Chat endpoint that provides conversational AI with image understanding.
+    Uses SmolVLM pipeline for multimodal conversations.
     """
     try:
-        # Handle image upload (acknowledge but don't process for now)
+        # Handle image upload and text message
         if image:
             if image.content_type not in ("image/jpeg", "image/png"):
                 raise HTTPException(
                     status_code=415, detail="Please upload a JPEG or PNG image."
                 )
             
-            # For now, just acknowledge the image
+            # Process with image context
             if chat_bot is not None:
-                # Generate response with image context
-                prompt = f"User sent an image and said: {message}. Respond helpfully."
+                # Convert image to PIL
+                img_bytes = await image.read()
+                pil_image = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+                
+                # Format messages for SmolVLM pipeline
+                messages = [
+                    {
+                        "role": "user", 
+                        "content": [
+                            {"type": "image"},
+                            {"type": "text", "text": message}
+                        ]
+                    }
+                ]
+                
+                # Generate response using pipeline with proper parameters
                 response = chat_bot(
-                    image=Image.open(io.BytesIO(await image.read())).convert("RGB"),
-                    text=prompt,
-
+                    text=messages, 
+                    images=[pil_image], 
+                    max_new_tokens=256, 
+                    return_full_text=False
                 )
                 
+                # Extract assistant response
                 if isinstance(response, list) and len(response) > 0:
-                    generated_text = response[0].get('generated_text', '')
-                    # Remove the prompt from the response
-                    if generated_text.startswith(prompt):
-                        assistant_response = generated_text[len(prompt):].strip()
-                    else:
-                        assistant_response = generated_text.strip()
+                    assistant_response = response[0].get('generated_text', '').strip()
+                elif isinstance(response, str):
+                    assistant_response = response.strip()
                 else:
-                    assistant_response = "I can see you sent an image! While I can't analyze it yet, I'm here to help with your message."
+                    assistant_response = "I can see your image! How can I help you with it?"
+                
+                if not assistant_response:
+                    assistant_response = "I can see your image! How can I help you with it?"
+                    
             else:
                 assistant_response = "I can see you sent an image! While I can't analyze it yet, I'm here to help with your message."
         
         else:
             # Text-only conversation
             if chat_bot is not None:
-                # Use the text generation model
+                # Format messages for SmolVLM pipeline (text-only)
+                messages = [
+                    {
+                        "role": "user", 
+                        "content": [
+                            {"type": "text", "text": message}
+                        ]
+                    }
+                ]
+                
+                # Generate response using pipeline with proper parameters
                 response = chat_bot(
-                    text=message,
+                    text=messages, 
+                    max_new_tokens=256, 
+                    return_full_text=False
                 )
                 
+                # Extract assistant response
                 if isinstance(response, list) and len(response) > 0:
-                    generated_text = response[0].get('generated_text', '')
-                    # Remove the input from the response
-                    if generated_text.startswith(message):
-                        assistant_response = generated_text[len(message):].strip()
-                    else:
-                        assistant_response = generated_text.strip()
+                    assistant_response = response[0].get('generated_text', '').strip()
+                elif isinstance(response, str):
+                    assistant_response = response.strip()
                 else:
-                    assistant_response = "I'm sorry, I couldn't generate a response."
+                    assistant_response = "I'm here to help! Could you please rephrase your question?"
+                
+                if not assistant_response:
+                    assistant_response = "I'm here to help! Could you please rephrase your question?"
+                    
             else:
                 # Simple rule-based fallback
                 assistant_response = f"I understand you said: '{message}'. I'm a simple AI assistant here to help!"
@@ -209,23 +252,26 @@ async def chat(message: str = Form(...), image: UploadFile = None):
         # Clean up and validate response
         if not assistant_response or len(assistant_response.strip()) == 0:
             assistant_response = "I'm here to help! Could you please rephrase your question?"
+            
         # Log the interaction
-        logger.info(f"User: {message} | Assistant: {assistant_response} | Model: {chat_bot.model.base_model._get_name() if chat_bot else 'Simple Rule-based Chat'}")
+        model_name = "SmolVLM-Instruct" if chat_bot is not None else "Simple Rule-based Chat"
+        logger.info(f"User: {message} | Assistant: {assistant_response} | Model: {model_name}")
+        
         return JSONResponse({
             "message": message,
             "response": assistant_response,
             "has_image": image is not None,
-            "model_used": chat_bot.model.base_model._get_name() if chat_bot else "Simple Rule-based Chat"
+            "model_used": model_name
         })
         
     except Exception as e:
-        print(f"Chat error: {str(e)}")
+        logger.error(f"Chat error: {str(e)} | Message: {message} | Image: {image.filename if image else 'None'}")
         # Provide a fallback response even if there's an error
         return JSONResponse({
             "message": message,
             "response": "I'm sorry, I'm having trouble processing your request right now. Please try again.",
             "has_image": image is not None,
-            "model_used": chat_bot.model.base_model._get_name() if chat_bot else "Error fallback"
+            "model_used": "Error fallback"
         })
 
 
