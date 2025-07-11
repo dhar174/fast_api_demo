@@ -13,6 +13,19 @@ const statusCard = document.getElementById('statusCard');
 const statusIndicator = document.getElementById('statusIndicator');
 const statusText = document.getElementById('statusText');
 
+// Chat Elements
+const chatMessages = document.getElementById('chatMessages');
+const chatInput = document.getElementById('chatInput');
+const chatSendBtn = document.getElementById('chatSendBtn');
+const chatImageBtn = document.getElementById('chatImageBtn');
+const chatImageInput = document.getElementById('chatImageInput');
+const chatImageUpload = document.getElementById('chatImageUpload');
+const chatImagePreview = document.getElementById('chatImagePreview');
+const removeChatImage = document.getElementById('removeChatImage');
+
+// Chat state
+let chatImageFile = null;
+
 // Initialize app
 document.addEventListener('DOMContentLoaded', function() {
     checkServerStatus();
@@ -59,6 +72,19 @@ function setupEventListeners() {
             analyzeSentiment();
         }
     });
+    
+    // Chat event listeners
+    chatSendBtn.addEventListener('click', sendChatMessage);
+    chatInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendChatMessage();
+        }
+    });
+    
+    chatImageBtn.addEventListener('click', () => chatImageInput.click());
+    chatImageInput.addEventListener('change', handleChatImageSelect);
+    removeChatImage.addEventListener('click', removeChatImagePreview);
 }
 
 // Drag and drop handlers
@@ -297,3 +323,155 @@ document.addEventListener('click', function(e) {
         }
     }
 });
+
+// Chat functionality
+function handleChatImageSelect(e) {
+    const file = e.target.files[0];
+    if (file) {
+        // Validate file type
+        if (!file.type.match(/image\/(jpeg|png)/)) {
+            showNotification('Please select a JPEG or PNG image.', 'error');
+            return;
+        }
+        
+        // Validate file size (max 5MB for chat)
+        if (file.size > 5 * 1024 * 1024) {
+            showNotification('Image size must be less than 5MB.', 'error');
+            return;
+        }
+        
+        chatImageFile = file;
+        
+        // Show preview
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            chatImagePreview.src = e.target.result;
+            chatImageUpload.style.display = 'block';
+        };
+        reader.readAsDataURL(file);
+    }
+}
+
+function removeChatImagePreview() {
+    chatImageFile = null;
+    chatImageUpload.style.display = 'none';
+    chatImageInput.value = '';
+}
+
+function addChatMessage(content, isUser = true, imageUrl = null) {
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `chat-message ${isUser ? 'message-user' : 'message-assistant'}`;
+    
+    const bubbleDiv = document.createElement('div');
+    bubbleDiv.className = 'message-bubble';
+    
+    if (imageUrl && isUser) {
+        const img = document.createElement('img');
+        img.src = imageUrl;
+        img.className = 'message-image';
+        bubbleDiv.appendChild(img);
+    }
+    
+    const textDiv = document.createElement('div');
+    textDiv.textContent = content;
+    bubbleDiv.appendChild(textDiv);
+    
+    const timeDiv = document.createElement('div');
+    timeDiv.className = 'message-time';
+    timeDiv.textContent = new Date().toLocaleTimeString();
+    
+    messageDiv.appendChild(bubbleDiv);
+    messageDiv.appendChild(timeDiv);
+    
+    chatMessages.appendChild(messageDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    
+    return messageDiv;
+}
+
+function showThinkingIndicator() {
+    const thinkingDiv = document.createElement('div');
+    thinkingDiv.className = 'chat-message message-assistant';
+    thinkingDiv.id = 'thinking-indicator';
+    
+    const bubbleDiv = document.createElement('div');
+    bubbleDiv.className = 'message-bubble chat-thinking';
+    
+    bubbleDiv.innerHTML = `
+        <span>AI is thinking</span>
+        <div class="typing-indicator">
+            <div class="typing-dot"></div>
+            <div class="typing-dot"></div>
+            <div class="typing-dot"></div>
+        </div>
+    `;
+    
+    thinkingDiv.appendChild(bubbleDiv);
+    chatMessages.appendChild(thinkingDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    
+    return thinkingDiv;
+}
+
+function removeThinkingIndicator() {
+    const thinkingDiv = document.getElementById('thinking-indicator');
+    if (thinkingDiv) {
+        thinkingDiv.remove();
+    }
+}
+
+async function sendChatMessage() {
+    const message = chatInput.value.trim();
+    if (!message && !chatImageFile) {
+        showNotification('Please enter a message or select an image.', 'error');
+        return;
+    }
+    
+    // Add user message to chat
+    const userImageUrl = chatImageFile ? URL.createObjectURL(chatImageFile) : null;
+    addChatMessage(message || '(Image)', true, userImageUrl);
+    
+    // Clear input
+    chatInput.value = '';
+    
+    // Show thinking indicator
+    const thinkingIndicator = showThinkingIndicator();
+    
+    try {
+        // Prepare form data
+        const formData = new FormData();
+        formData.append('message', message);
+        if (chatImageFile) {
+            formData.append('image', chatImageFile);
+        }
+        
+        // Send request
+        const response = await fetch('/chat', {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        // Remove thinking indicator
+        removeThinkingIndicator();
+        
+        // Add assistant response
+        addChatMessage(result.response, false);
+        
+    } catch (error) {
+        console.error('Chat error:', error);
+        removeThinkingIndicator();
+        addChatMessage('Sorry, I encountered an error. Please try again.', false);
+        showNotification('Chat request failed. Please try again.', 'error');
+    } finally {
+        // Clean up
+        if (chatImageFile) {
+            removeChatImagePreview();
+        }
+    }
+}
