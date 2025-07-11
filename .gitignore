@@ -39,6 +39,10 @@ MANIFEST
 imagenet_classes.txt
 imagenet_class_index.json
 
+# Transformers cache
+.cache/
+transformers_cache/
+
 # IDE
 .vscode/
 .idea/

@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Classifier Hub</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1><i class="fas fa-brain"></i> AI Classifier Hub</h1>
+            <p>Powered by FastAPI & PyTorch</p>
+        </header>
+
+        <!-- Server Status -->
+        <div class="status-card" id="statusCard">
+            <div class="status-indicator" id="statusIndicator">
+                <i class="fas fa-circle"></i>
+                <span id="statusText">Checking server...</span>
+            </div>
+        </div>
+
+        <!-- Image Classification Section -->
+        <div class="section-card">
+            <div class="section-header">
+                <h2><i class="fas fa-image"></i> Image Classification</h2>
+                <p>Upload an image to classify it using ResNet-18</p>
+            </div>
+            
+            <div class="upload-area" id="uploadArea">
+                <div class="upload-content">
+                    <i class="fas fa-cloud-upload-alt"></i>
+                    <p>Drag & drop an image here, or <span class="browse">browse</span></p>
+                    <small>Supports JPEG, PNG files</small>
+                </div>
+                <input type="file" id="imageInput" accept="image/jpeg,image/png" hidden>
+            </div>
+
+            <div class="image-preview" id="imagePreview" style="display: none;">
+                <img id="previewImg" alt="Preview">
+                <button class="btn btn-primary" id="classifyBtn">
+                    <i class="fas fa-search"></i> Classify Image
+                </button>
+            </div>
+
+            <div class="result-card" id="imageResult" style="display: none;">
+                <h3>Classification Result</h3>
+                <div class="result-content">
+                    <div class="prediction">
+                        <span class="label">Predicted Class:</span>
+                        <span class="value" id="predictedClass"></span>
+                    </div>
+                    <div class="confidence">
+                        <span class="label">Confidence:</span>
+                        <span class="value" id="confidence"></span>
+                        <div class="confidence-bar">
+                            <div class="confidence-fill" id="confidenceFill"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sentiment Analysis Section -->
+        <div class="section-card">
+            <div class="section-header">
+                <h2><i class="fas fa-comment-alt"></i> Sentiment Analysis</h2>
+                <p>Analyze the sentiment of your text</p>
+            </div>
+            
+            <div class="text-input-area">
+                <textarea 
+                    id="textInput" 
+                    placeholder="Enter text to analyze sentiment..."
+                    rows="4"
+                ></textarea>
+                <button class="btn btn-secondary" id="sentimentBtn">
+                    <i class="fas fa-chart-line"></i> Analyze Sentiment
+                </button>
+            </div>
+
+            <div class="result-card" id="sentimentResult" style="display: none;">
+                <h3>Sentiment Analysis Result</h3>
+                <div class="result-content">
+                    <div class="sentiment">
+                        <span class="label">Sentiment:</span>
+                        <span class="value sentiment-badge" id="sentimentLabel"></span>
+                    </div>
+                    <div class="sentiment-score">
+                        <span class="label">Score:</span>
+                        <span class="value" id="sentimentScore"></span>
+                        <div class="score-bar">
+                            <div class="score-fill" id="scoreFill"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading Overlay -->
+        <div class="loading-overlay" id="loadingOverlay">
+            <div class="loading-spinner">
+                <i class="fas fa-spinner fa-spin"></i>
+                <p>Processing...</p>
+            </div>
+        </div>
+
+        <footer class="footer">
+            <p>Built with FastAPI, PyTorch & Transformers | <a href="/docs" target="_blank">API Documentation</a></p>
+        </footer>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>

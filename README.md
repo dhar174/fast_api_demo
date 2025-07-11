@@ -1,14 +1,15 @@
-# FastAPI Image Classifier
+# FastAPI Image Classifier with Web Interface
 
-A minimal FastAPI application that performs image classification using a pretrained ResNet-18 model from torchvision.
+A modern FastAPI application that performs image classification using ResNet-18 and sentiment analysis using transformers, complete with a beautiful web interface.
 
 ## Features
 
-- **Simple API**: Single endpoint for image classification
-- **Pretrained Model**: Uses ResNet-18 trained on ImageNet
-- **Interactive Documentation**: Built-in Swagger UI
-- **File Upload**: Accepts JPEG and PNG images
-- **JSON Response**: Returns predicted class and confidence score
+- **🖼️ Image Classification**: Upload images for real-time classification using ResNet-18
+- **💭 Sentiment Analysis**: Analyze text sentiment using transformer models  
+- **🌐 Web Interface**: Modern, responsive frontend with drag-and-drop functionality
+- **📊 Interactive Results**: Visual confidence scores and sentiment indicators
+- **⚡ Real-time Processing**: Fast inference with PyTorch and transformers
+- **📱 Mobile Friendly**: Responsive design that works on all devices
 
 ## Quick Start
 
@@ -37,19 +38,26 @@ python server.py
 
 The server will start on `http://localhost:8000`
 
-### 3. Test the API
+### 3. Access the Application
 
-Open your browser and go to [http://localhost:8000/docs](http://localhost:8000/docs) to access the interactive Swagger UI.
+**🌐 Web Interface (Recommended)**: Open [http://localhost:8000](http://localhost:8000)
+- Modern, user-friendly interface
+- Drag-and-drop image upload
+- Real-time sentiment analysis
+- Visual progress indicators
 
-- Click on the `/predict` endpoint
-- Click "Try it out"
-- Upload a JPEG or PNG image
-- Click "Execute" to get the classification result
+**📚 API Documentation**: Open [http://localhost:8000/docs](http://localhost:8000/docs)
+- Interactive Swagger UI
+- Test API endpoints directly
+- View request/response schemas
 
 ## API Endpoints
 
 ### GET `/`
-Health check endpoint that returns a welcome message.
+Serves the main web interface with modern UI for image classification and sentiment analysis.
+
+### GET `/health`
+Health check endpoint that returns server status.
 
 ### POST `/predict`
 Image classification endpoint that accepts an image file and returns the predicted class.
@@ -65,13 +73,33 @@ Image classification endpoint that accepts an image file and returns the predict
 }
 ```
 
+### GET `/sentiment_analysis`
+Sentiment analysis endpoint that analyzes the sentiment of provided text.
+
+**Parameters**: `text` (query parameter)
+**Response**: JSON with text and sentiment analysis
+
+```json
+{
+  "text": "I love this application!",
+  "sentiment": {
+    "label": "POSITIVE",
+    "score": 0.9998
+  }
+}
+```
+
 ## Project Structure
 
 ```
 fast_api_demo/
-├── server.py              # Main FastAPI application
-├── requirements.txt       # Python dependencies
-├── fastapi_env/          # Virtual environment (not tracked)
+├── server.py                 # Main FastAPI application
+├── requirements.txt          # Python dependencies
+├── static/                   # Frontend assets
+│   ├── index.html           # Main web interface
+│   ├── styles.css           # Styling
+│   └── script.js            # Frontend functionality
+├── .venv/                   # Virtual environment
 ├── .github/
 │   └── copilot-instructions.md
 └── README.md
@@ -92,6 +120,8 @@ fast_api_demo/
 - `torch` - PyTorch deep learning framework
 - `torchvision` - Computer vision library with pretrained models
 - `pillow` - Image processing library
+- `python-multipart` - Form data parsing for file uploads
+- `transformers` - State-of-the-art NLP models
 
 ## Development
 

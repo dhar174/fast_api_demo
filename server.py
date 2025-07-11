@@ -10,7 +10,8 @@ Open:
 """
 
 from fastapi import FastAPI, UploadFile, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 import torch
 from torchvision import models, transforms
 from PIL import Image
@@ -19,7 +20,16 @@ import json
 import urllib.request
 import os
 
+# We are using transformers for future extensions, e.g., sentiment analysis
+from transformers import (
+    pipeline,
+)  # Uncomment if you want to use transformers for NLP tasks
+
+
 app = FastAPI(title="Minimal FastAPI Image Classifier")
+
+# Mount static files
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # ---------- 1. Load model & labels ----------
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -27,6 +37,13 @@ print(f"Using device: {device}")
 # Load a pretrained ResNet-18 model
 model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
 model.eval().to(device)
+
+sentiment_analyzer = pipeline(
+    "sentiment-analysis", device=0 if torch.cuda.is_available() else -1
+)
+
+
+chat_bot = pipeline("text-generation", device=0 if torch.cuda.is_available() else -1)
 
 # Download ImageNet labels (only once)
 LABELS_PATH = "imagenet_classes.txt"
@@ -55,8 +72,14 @@ preprocess = transforms.Compose(
 
 
 # ---------- 3. Routes ----------
-@app.get("/")
-def root():
+@app.get("/", response_class=HTMLResponse)
+async def root():
+    with open("static/index.html", "r") as f:
+        return HTMLResponse(content=f.read(), status_code=200)
+
+
+@app.get("/health")
+def health():
     return {"msg": "Up and running!  Visit /docs for Swagger UI."}
 
 
@@ -91,6 +114,16 @@ async def predict(file: UploadFile):
             "confidence": round(confidence, 4),
         }
     )
+
+
+@app.get("/sentiment_analysis")
+async def sentiment_analysis(text: str):
+    """
+    Example endpoint for sentiment analysis using transformers.
+    This is just a placeholder to show how you might extend the app.
+    """
+    result = sentiment_analyzer(text)
+    return JSONResponse({"text": text, "sentiment": result[0]})
 
 
 # ---------- 4. Entry point ----------
