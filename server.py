@@ -82,8 +82,8 @@ preprocess = transforms.Compose(
 # ---------- 3. Routes ----------
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    with open("static/index.html", "r") as f:
-        return HTMLResponse(content=f.read(), status_code=200)
+    with open("static/index.html", "r") as ff:
+        return HTMLResponse(content=ff.read(), status_code=200)
 
 
 @app.get("/health")
@@ -146,7 +146,7 @@ async def messages_builder(message: str, image: UploadFile = None):
         img_bytes = await image.read()
         rgb_image = Image.open(io.BytesIO(img_bytes)).convert("RGB")
 
-        messages[0]["content"].append({"type": "image", "data": rgb_image})
+        messages[0]["content"].insert(0, {"type": "image", "data": rgb_image})
     return messages
 
 
@@ -155,18 +155,7 @@ async def chat(message: str, image: UploadFile = None):
     """Example chat endpoint that uses the chat_bot pipeline.
     If an image is provided, it can be processed as well.
     """
-    messages = [
-        {
-            "role": "user",
-            "content": [
-                {
-                    "type": "image",
-                    "url": "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/p-blog/candy.JPG",
-                },
-                {"type": "text", "text": "What animal is on the candy?"},
-            ],
-        },
-    ]
+    messages = messages_builder(message, image)
     response = chat_bot(messages)
 
     print(f"Chat response: {response[0]}")
