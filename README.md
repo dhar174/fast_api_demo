@@ -79,7 +79,7 @@ A health check endpoint.
 
 ### POST `/predict`
 Accepts an image file and returns the predicted class label and confidence score.
-- **Request**: Multipart form data with an `image` file (JPEG or PNG).
+- **Request**: Multipart form data with a `file` (JPEG or PNG).
 - **Response**: JSON with filename, predicted class, and confidence.
   ```json
   {
@@ -311,4 +311,3 @@ After activating, you can run `python server.py` to start the main application o
 ## License
 
 This project is for educational and demonstration purposes.
-```
