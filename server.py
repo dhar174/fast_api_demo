@@ -33,7 +33,7 @@ from transformers import (
 )  # Using pipeline for image-text-to-text tasks
 
 
-app = FastAPI(title="Minimal FastAPI Image Classifier")
+app = FastAPI(title="AI MultiModal Hub")
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")

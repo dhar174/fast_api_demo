@@ -10,7 +10,7 @@ import json
 import urllib.request
 import os
 
-app = FastAPI(title="FastAPI Image Classifier with Chat")
+app = FastAPI(title="AI MultiModal Hub")
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
