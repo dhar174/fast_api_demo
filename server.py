@@ -75,6 +75,7 @@ if chat_bot is not None:
     try:
         # Test the chat model with a simple prompt
         test_messages = [
+            
             {"role": "user", "content": [{"type": "text", "text": "Hello, how are you?"}]}
         ]
         test_response = chat_bot(text=test_messages, max_new_tokens=50, return_full_text=False)
