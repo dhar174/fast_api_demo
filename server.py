@@ -12,6 +12,7 @@ Open:
 from fastapi import FastAPI, UploadFile, HTTPException, Form
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from request_correlation import install_request_correlation
 import torch
 from torchvision import models, transforms
 from PIL import Image
@@ -34,6 +35,7 @@ from transformers import (
 
 
 app = FastAPI(title="Minimal FastAPI Image Classifier")
+install_request_correlation(app)
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")

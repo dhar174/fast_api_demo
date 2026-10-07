@@ -65,6 +65,26 @@ You should see output indicating that the models are loading, for example:
 
 All API endpoints are accessible via the base URL `http://localhost:8002`.
 
+### Request Correlation IDs
+
+The main application includes `X-Request-ID` on every HTTP response, including
+validation errors, missing routes, unhandled server errors, documentation, and
+static assets. If a request supplies `X-Request-ID`, its value is returned
+unchanged; otherwise the application generates a UUID. Header names are
+case-insensitive, and supplied IDs do not have to be UUIDs.
+
+Route handlers can access the same ID as `request.state.request_id` on a FastAPI
+`Request` object. The ID is request-local and does not change existing response
+bodies, status codes, or chat session IDs. Client-supplied IDs are correlation
+values, not authentication credentials. This behavior applies to `server.py`.
+
+```bash
+curl -i -H "X-Request-ID: client-trace-123" http://localhost:8002/health
+```
+
+The response includes `X-Request-ID: client-trace-123`. Omitting the request
+header returns a newly generated UUID instead.
+
 ### GET `/`
 Serves the main web interface (`static/index.html`).
 
@@ -307,6 +327,39 @@ This project uses a Python virtual environment to manage dependencies. The prefe
     ```
 
 After activating, you can run `python server.py` to start the main application or explore other scripts like `conversation_demo.py`.
+
+### Running Tests
+
+Install test dependencies in the active environment:
+
+```bash
+pip install -r requirements-dev.txt
+```
+
+The correlation regression tests use a lightweight FastAPI app configured with
+the production middleware installer and do not load or download ML models:
+
+```bash
+python -m pytest test_request_correlation.py -q
+```
+
+For the existing integration scripts and full pytest suite, install the runtime
+dependencies from `requirements.txt` and start `python server.py` in a separate
+terminal from the repository root. These tests require the main server at
+`http://localhost:8002`; server startup loads models and may download weights and
+ImageNet labels. Then run:
+
+```bash
+python test_setup.py
+python test_chat_pipeline.py
+python comprehensive_test.py
+python -m pytest
+```
+
+The `session_id` pytest fixture creates and cleans up real chat sessions for the
+existing pipeline tests. Some legacy tests return booleans or print failures
+without a nonzero exit status, so inspect their output as well as the exit code.
+Model-memory checks require a functioning SmolVLM model, not just fallback chat.
 
 ## License
 
